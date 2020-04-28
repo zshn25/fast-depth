@@ -655,7 +655,7 @@ class MobileNetSkipAdd(nn.Module):
     def __init__(self, output_size, pretrained=True, 
                  pretrained_path = os.path.join('imagenet', 
                  'results', 'imagenet.arch=mobilenet.lr=0.1.bs=256',
-                 'model_best.pth.tar')):
+                 'model_best.pth.tar'), scales = range(4)):
 
         super(MobileNetSkipAdd, self).__init__()
         self.output_size = output_size
@@ -677,6 +677,7 @@ class MobileNetSkipAdd(nn.Module):
             setattr( self, 'conv{}'.format(i), mobilenet.model[i])
 
         kernel_size = 5
+        self.scales = scales
         # self.decode_conv1 = conv(1024, 512, kernel_size)
         # self.decode_conv2 = conv(512, 256, kernel_size)
         # self.decode_conv3 = conv(256, 128, kernel_size)
@@ -697,15 +698,30 @@ class MobileNetSkipAdd(nn.Module):
         self.decode_conv5 = nn.Sequential(
             depthwise(64, kernel_size),
             pointwise(64, 32))
-        self.decode_conv6 = pointwise(32, 1)
+        #self.decode_conv6 = pointwise(32, 1)
         weights_init(self.decode_conv1)
         weights_init(self.decode_conv2)
         weights_init(self.decode_conv3)
         weights_init(self.decode_conv4)
         weights_init(self.decode_conv5)
-        weights_init(self.decode_conv6)
+        #weights_init(self.decode_conv6) 
+
+        self.decode_dispconv0 = pointwise(32, 1)
+        weights_init(self.decode_dispconv0)
+
+        if 1 in scales:
+            self.decode_dispconv1 = pointwise(64, 1)
+            weights_init(self.decode_dispconv1)
+        if 2 in scales:
+            self.decode_dispconv2 = pointwise(128, 1)
+            weights_init(self.decode_dispconv2)
+        if 3 in scales:
+            self.decode_dispconv3 = pointwise(256, 1)
+            weights_init(self.decode_dispconv3)
 
     def forward(self, x):
+        # Same structure as MonoDepth
+        outputs = {}
         # skip connections: dec4: enc1
         # dec 3: enc2 or enc3
         # dec 2: enc4 or enc5
@@ -725,13 +741,20 @@ class MobileNetSkipAdd(nn.Module):
             x = F.interpolate(x, scale_factor=2, mode='nearest')
             if i==4:
                 x = x + x1
+                if 1 in self.scales:
+                    outputs[("disp",1)] = self.decode_dispconv1(x)  # Output at scale 1
             elif i==3:
                 x = x + x2
+                if 2 in self.scales:
+                    outputs[("disp",2)] = self.decode_dispconv2(x)  # Output at scale 1
             elif i==2:
                 x = x + x3
+                if 3 in self.scales:
+                    outputs[("disp",3)] = self.decode_dispconv3(x)  # Output at scale 1
             # print("{}: {}".format(i, x.size()))
-        x = self.decode_conv6(x)
-        return x
+        x = self.decode_dispconv0(x) # i==5
+        outputs[("disp",0)] = x  # Output at scale 0
+        return outputs
 
 class MobileNetSkipConcat(nn.Module):
     def __init__(self, output_size, pretrained=True):
