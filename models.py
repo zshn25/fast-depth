@@ -5,7 +5,7 @@ import torchvision.models
 import collections
 import math
 import torch.nn.functional as F
-import imagenet.mobilenet
+from .imagenet import mobilenet as imagenet_mobilenet
 
 class Identity(nn.Module):
     # a dummy identity module
@@ -429,7 +429,7 @@ class MobileNet(nn.Module):
 
         super(MobileNet, self).__init__()
         self.output_size = output_size
-        mobilenet = imagenet.mobilenet.MobileNet()
+        mobilenet = imagenet_mobilenet.MobileNet()
         if pretrained:
             pretrained_path = os.path.join('imagenet', 'results', 'imagenet.arch=mobilenet.lr=0.1.bs=256', 'model_best.pth.tar')
             checkpoint = torch.load(pretrained_path)
@@ -666,7 +666,7 @@ class MobileNetSkipAdd(nn.Module):
 
         super(MobileNetSkipAdd, self).__init__()
         self.output_size = output_size
-        mobilenet = imagenet.mobilenet.MobileNet()
+        mobilenet = imagenet_mobilenet.MobileNet()
         if pretrained:
             #pretrained_path = os.path.join('imagenet', 'results', 'imagenet.arch=mobilenet.lr=0.1.bs=256', 'model_best.pth.tar')
             checkpoint = torch.load(pretrained_path)
@@ -749,7 +749,7 @@ class MobileNetSkipAddMultiScale(nn.Module):
 
         super(MobileNetSkipAddMultiScale, self).__init__()
         self.output_size = output_size
-        mobilenet = imagenet.mobilenet.MobileNet()
+        mobilenet = imagenet_mobilenet.MobileNet()
         if pretrained:
             checkpoint = torch.load(pretrained_path)
             state_dict = checkpoint['state_dict']
@@ -851,7 +851,7 @@ class MobileNetSkipConcat(nn.Module):
 
         super(MobileNetSkipConcat, self).__init__()
         self.output_size = output_size
-        mobilenet = imagenet.mobilenet.MobileNet()
+        mobilenet = imagenet_mobilenet.MobileNet()
         if pretrained:
             pretrained_path = os.path.join('imagenet', 'results', 'imagenet.arch=mobilenet.lr=0.1.bs=256', 'model_best.pth.tar')
             checkpoint = torch.load(pretrained_path)
