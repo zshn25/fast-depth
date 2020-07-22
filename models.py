@@ -56,13 +56,13 @@ def conv(in_channels, out_channels, kernel_size, relu6=False):
         return nn.Sequential(
             nn.Conv2d(in_channels,out_channels,kernel_size,stride=1,padding=padding,bias=False),
             nn.BatchNorm2d(out_channels),
-            nn.ReLU(inplace=True),
+            nn.ReLU(inplace=False),
         )
     else:
         return nn.Sequential(
           nn.Conv2d(in_channels,out_channels,kernel_size,stride=1,padding=padding,bias=False),
           nn.BatchNorm2d(out_channels),
-          nn.ReLU6(inplace=True),
+          nn.ReLU6(inplace=False),
         )
 
 def depthwise(in_channels, kernel_size):
@@ -71,14 +71,14 @@ def depthwise(in_channels, kernel_size):
     return nn.Sequential(
           nn.Conv2d(in_channels,in_channels,kernel_size,stride=1,padding=padding,bias=False,groups=in_channels),
           nn.BatchNorm2d(in_channels),
-          nn.ReLU(inplace=True),
+          nn.ReLU(inplace=False),
         )
 
 def pointwise(in_channels, out_channels):
     return nn.Sequential(
           nn.Conv2d(in_channels,out_channels,1,1,0,bias=False),
           nn.BatchNorm2d(out_channels),
-          nn.ReLU(inplace=True),
+          nn.ReLU(inplace=False),
         )
 
 def convt(in_channels, out_channels, kernel_size):
@@ -90,7 +90,7 @@ def convt(in_channels, out_channels, kernel_size):
             nn.ConvTranspose2d(in_channels,out_channels,kernel_size,
                 stride,padding,output_padding,bias=False),
             nn.BatchNorm2d(out_channels),
-            nn.ReLU(inplace=True),
+            nn.ReLU(inplace=False),
         )
 
 def convt_dw(channels, kernel_size):
@@ -102,7 +102,7 @@ def convt_dw(channels, kernel_size):
             nn.ConvTranspose2d(channels,channels,kernel_size,
                 stride,padding,output_padding,bias=False,groups=channels),
             nn.BatchNorm2d(channels),
-            nn.ReLU(inplace=True),
+            nn.ReLU(inplace=False),
         )
 
 def upconv(in_channels, out_channels):
@@ -124,7 +124,7 @@ class upproj(nn.Module):
         self.branch1 = nn.Sequential(
             nn.Conv2d(in_channels,out_channels,kernel_size=5,stride=1,padding=2,bias=False),
             nn.BatchNorm2d(out_channels),
-            nn.ReLU(inplace=True),
+            nn.ReLU(inplace=False),
             nn.Conv2d(out_channels,out_channels,kernel_size=3,stride=1,padding=1,bias=False),
             nn.BatchNorm2d(out_channels),
         )
@@ -742,13 +742,13 @@ class MobileNetSkipAdd(nn.Module):
         return x
 
 class MobileNetSkipAddMultiScale(nn.Module):
-    def __init__(self, output_size, pretrained=True, 
+    def __init__(self, pretrained=True, 
                  pretrained_path = os.path.join('imagenet', 
                  'results', 'imagenet.arch=mobilenet.lr=0.1.bs=256',
                  'model_best.pth.tar'), scales = range(4)):
 
         super(MobileNetSkipAddMultiScale, self).__init__()
-        self.output_size = output_size
+        # self.output_size = output_size
         mobilenet = imagenet_mobilenet.MobileNet()
         if pretrained:
             checkpoint = torch.load(pretrained_path)
@@ -842,6 +842,246 @@ class MobileNetSkipAddMultiScale(nn.Module):
                 if 3 in self.scales:
                     outputs[("disp",3)] = self.decode_dispconv3(x)  # Output at scale 1
             # print("{}: {}".format(i, x.size()))
+        x = self.decode_dispconv0(x) # i==5
+        outputs[("disp",0)] = x  # Output at scale 0
+        return outputs
+
+class MobileNetSkipAddConvTMultiScale(nn.Module):
+    def __init__(self, pretrained=True, 
+                 pretrained_path = os.path.join('imagenet', 
+                 'results', 'imagenet.arch=mobilenet.lr=0.1.bs=256',
+                 'model_best.pth.tar'), scales = range(4)):
+
+        super(MobileNetSkipAddConvTMultiScale, self).__init__()
+        # self.output_size = output_size
+        mobilenet = imagenet_mobilenet.MobileNet()
+        if pretrained:
+            checkpoint = torch.load(pretrained_path)
+            state_dict = checkpoint['state_dict']
+
+            from collections import OrderedDict
+            new_state_dict = OrderedDict()
+            for k, v in state_dict.items():
+                name = k[7:] # remove `module.`
+                new_state_dict[name] = v
+            mobilenet.load_state_dict(new_state_dict)
+        else:
+            mobilenet.apply(weights_init)
+
+        for i in range(14):
+            setattr( self, 'conv{}'.format(i), mobilenet.model[i])
+
+        kernel_size = 5
+        self.scales = scales
+        # self.decode_conv1 = conv(1024, 512, kernel_size)
+        # self.decode_conv2 = conv(512, 256, kernel_size)
+        # self.decode_conv3 = conv(256, 128, kernel_size)
+        # self.decode_conv4 = conv(128, 64, kernel_size)
+        # self.decode_conv5 = conv(64, 32, kernel_size)
+        # self.decode_conv1 = nn.Sequential(
+        #     depthwise(1024, kernel_size),
+        #     pointwise(1024, 512))
+        # self.decode_conv2 = nn.Sequential(
+        #     depthwise(512, kernel_size),
+        #     pointwise(512, 256))
+        # self.decode_conv3 = nn.Sequential(
+        #     depthwise(256, kernel_size),
+        #     pointwise(256, 128))
+        # self.decode_conv4 = nn.Sequential(
+        #     depthwise(128, kernel_size),
+        #     pointwise(128, 64))
+        # self.decode_conv5 = nn.Sequential(
+        #     depthwise(64, kernel_size),
+        #     pointwise(64, 32))
+        self.decode_convt1 = nn.Sequential(
+            convt_dw(1024, kernel_size),
+            pointwise(1024, 512))
+        self.decode_convt2 = nn.Sequential(
+            convt_dw(512, kernel_size),
+            pointwise(512, 256))
+        self.decode_convt3 = nn.Sequential(
+            convt_dw(256, kernel_size),
+            pointwise(256, 128))
+        self.decode_convt4 = nn.Sequential(
+            convt_dw(128, kernel_size),
+            pointwise(128, 64))
+        self.decode_convt5 = nn.Sequential(
+            convt_dw(64, kernel_size),
+            pointwise(64, 32))
+        #self.decode_conv6 = pointwise(32, 1)
+        weights_init(self.decode_convt1)
+        weights_init(self.decode_convt2)
+        weights_init(self.decode_convt3)
+        weights_init(self.decode_convt4)
+        weights_init(self.decode_convt5)
+        #weights_init(self.decode_conv6) 
+
+        self.decode_dispconv0 = pointwise(32, 1)
+        weights_init(self.decode_dispconv0)
+
+        if 1 in scales:
+            self.decode_dispconv1 = pointwise(64, 1)
+            weights_init(self.decode_dispconv1)
+        if 2 in scales:
+            self.decode_dispconv2 = pointwise(128, 1)
+            weights_init(self.decode_dispconv2)
+        if 3 in scales:
+            self.decode_dispconv3 = pointwise(256, 1)
+            weights_init(self.decode_dispconv3)
+
+    def forward(self, x):
+        # Same structure as MonoDepth
+        outputs = {}
+        # skip connections: dec4: enc1
+        # dec 3: enc2 or enc3
+        # dec 2: enc4 or enc5
+        for i in range(14):
+            layer = getattr(self, 'conv{}'.format(i))
+            x = layer(x)
+            # print("{}: {}".format(i, x.size()))
+            if i==1:
+                x1 = x
+            elif i==3:
+                x2 = x
+            elif i==5:
+                x3 = x
+        for i in range(1,6):
+            layer = getattr(self, 'decode_convt{}'.format(i))
+            x = layer(x)
+            # x = F.interpolate(x, scale_factor=2, mode='nearest')
+            if i==4:
+                x = x + x1
+                if 1 in self.scales:
+                    outputs[("disp",1)] = self.decode_dispconv1(x)  # Output at scale 1
+            elif i==3:
+                x = x + x2
+                if 2 in self.scales:
+                    outputs[("disp",2)] = self.decode_dispconv2(x)  # Output at scale 1
+            elif i==2:
+                x = x + x3
+                if 3 in self.scales:
+                    outputs[("disp",3)] = self.decode_dispconv3(x)  # Output at scale 1
+            # print("{}: {}".format(i, x.size()))
+        x = self.decode_dispconv0(x) # i==5
+        outputs[("disp",0)] = x  # Output at scale 0
+        return outputs
+
+class MobileNet2Encoder(nn.Module):
+    def __init__(self, pretrained = True):
+        super(MobileNet2Encoder, self).__init__()
+        
+        self.encoder = torchvision.models.mobilenet_v2(pretrained=pretrained)
+        if not pretrained:
+            self.encoder.apply(weights_init)
+            
+        for i in range(19):
+            setattr( self, 'conv{}'.format(i), self.encoder.features[i])
+            
+    def forward(self, x):
+        outputs = []
+        for i in range(19):
+            layer = getattr(self, 'conv{}'.format(i))
+            x = layer(x)
+            
+            # Skip connections:
+            # MobileNet2: based on the change in input resolutions
+            # after layer 1 (res / 2)
+            # after layer 4 (res / 4)
+            # after layer 7 (res / 8)
+            # after layer 11 (res / 16)
+            if i in [0,3,6,10]:
+                outputs.append(x)
+        outputs.append(x)
+        return outputs
+                
+        
+
+class MobileNet2SkipAddMultiScale(nn.Module):
+    def __init__(self, pretrained=True, scales = range(5)):
+
+        super(MobileNet2SkipAddMultiScale, self).__init__()
+#         self.output_size = output_size
+        self.encoder = MobileNet2Encoder(pretrained=pretrained)
+
+        kernel_size = 5
+        self.scales = scales
+        # self.decode_conv1 = conv(1024, 512, kernel_size)
+        # self.decode_conv2 = conv(512, 256, kernel_size)
+        # self.decode_conv3 = conv(256, 128, kernel_size)
+        # self.decode_conv4 = conv(128, 64, kernel_size)
+        # self.decode_conv5 = conv(64, 32, kernel_size)
+        self.decode_conv1 = nn.Sequential(
+            depthwise(1280, kernel_size),
+            pointwise(1280, 1024))
+        self.decode_conv2 = nn.Sequential(
+            depthwise(1024, kernel_size),
+            pointwise(1024, 512))
+        self.decode_conv3 = nn.Sequential(
+            depthwise(512, kernel_size),
+            pointwise(512, 256))
+        self.decode_conv4 = nn.Sequential(
+            depthwise(256, kernel_size),
+            pointwise(256, 128))
+        self.decode_conv5 = nn.Sequential(
+            depthwise(128, kernel_size),
+            pointwise(128, 64))
+        self.decode_conv6 = nn.Sequential(
+            depthwise(64, kernel_size),
+            pointwise(64, 32))
+        #self.decode_conv6 = pointwise(32, 1)
+        weights_init(self.decode_conv1)
+        weights_init(self.decode_conv2)
+        weights_init(self.decode_conv3)
+        weights_init(self.decode_conv4)
+        weights_init(self.decode_conv5)
+        weights_init(self.decode_conv6) 
+
+        self.decode_dispconv0 = pointwise(32, 1)
+        weights_init(self.decode_dispconv0)
+
+        if 1 in scales:
+            self.decode_dispconv1 = pointwise(64, 1)
+            weights_init(self.decode_dispconv1)
+        if 2 in scales:
+            self.decode_dispconv2 = pointwise(128, 1)
+            weights_init(self.decode_dispconv2)
+        if 3 in scales:
+            self.decode_dispconv3 = pointwise(256, 1)
+            weights_init(self.decode_dispconv3)
+        if 4 in scales:
+            self.decode_dispconv4 = pointwise(512, 1)
+            weights_init(self.decode_dispconv4)
+            
+    def forward(self, x):
+        # Same structure as MonoDepth
+        outputs = {}
+        
+        #r/2, r/4, r/8, r/16, r
+        # 32, 16,  8,   4,   64
+        x1,  x2,  x3,  x4,   x = self.encoder(x)
+        
+        for i in range(1,7):
+            layer = getattr(self, 'decode_conv{}'.format(i))
+            x = layer(x) # r/16 
+            x = F.interpolate(x, scale_factor=2, mode='nearest')
+#             if i == 4:
+#                 x = x + x1
+#                 if 1 in self.scales:
+#                     outputs[("disp",1)] = self.decode_dispconv1(x)  # Output at scale 1
+#             elif i==3:
+#                 x = x + x2
+#                 if 2 in self.scales:
+#                     outputs[("disp",2)] = self.decode_dispconv2(x)  # Output at scale 2
+#             elif i==2:
+#                 x = x + x3
+#                 if 3 in self.scales:
+#                     outputs[("disp",3)] = self.decode_dispconv3(x)  # Output at scale 3
+            if i==1:
+#                 x = torch.cat((x, x4), 1)
+                x = x + x4
+#                 if 4 in self.scales:
+#                     outputs[("disp",4)] = self.decode_dispconv4(x)  # Output at scale 4
+            print("{}: {}".format(i, x.size()))
         x = self.decode_dispconv0(x) # i==5
         outputs[("disp",0)] = x  # Output at scale 0
         return outputs
