@@ -5,8 +5,11 @@ import torchvision.models
 import collections
 import math
 import torch.nn.functional as F
-from .imagenet import mobilenet as imagenet_mobilenet
-
+try:
+    from .imagenet import mobilenet as imagenet_mobilenet
+except:
+    from imagenet import mobilenet as imagenet_mobilenet
+    
 class Identity(nn.Module):
     # a dummy identity module
     def __init__(self):
